@@ -15,10 +15,19 @@
   </header>
   <div id="stage"><canvas id="board"></canvas><div id="banner" hidden></div></div>
   <footer class="controls">
-    <button id="betDown" aria-label="Lower bet">−</button>
-    <button id="spin" class="primary">DIG</button>
-    <button id="betUp" aria-label="Raise bet">+</button>
-    <button id="buy" class="secondary">Buy bonus<small id="buyCost"></small></button>
+    <div class="row">
+      <button id="betDown" aria-label="Lower bet">−</button>
+      <button id="spin" class="primary">DIG<small id="spinCost"></small></button>
+      <button id="betUp" aria-label="Raise bet">+</button>
+    </div>
+    <div class="row">
+      <button id="ante" class="toggle" aria-pressed="false">Ante Dig<small>more Mine Maps · 1.25x</small></button>
+      <button id="feature" class="toggle" aria-pressed="false">Feature Spins<small>2 maps every spin · <span id="featureCost"></span></small></button>
+    </div>
+    <div class="row">
+      <button id="buy" class="secondary">Buy Free Digs<small id="buyCost"></small></button>
+      <button id="buySuper" class="super">Buy Super Bonus<small id="superCost"></small></button>
+    </div>
     <label class="turbo"><input type="checkbox" id="turbo"> Turbo</label>
   </footer>
   <p id="status" role="status"></p>

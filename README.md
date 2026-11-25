@@ -20,14 +20,14 @@ python run.py            # full sims, weight fitting, export
 
 `run.py` writes to `library/publish_files/` in the Stake Engine layout:
 
-- `index.json`: bet modes (`base` cost 1, `bonus` cost 100)
+- `index.json`: the five bet modes and their costs
 - `books_<mode>.jsonl.zst`: one book per line, `{id, payoutMultiplier, events, ...}`
 - `lookUpTable_<mode>_0.csv`: `id,weight,payoutMultiplier`
 
 Payouts are integer hundredths of the bet (`250` = 2.5x). The simulation's raw RTP is
 pulled onto `TARGET_RTP` by an exponential tilt on the lookup-table weights, so keep the
 raw RTP within a few percent of target (check with `tune.py`). Run stats go to
-`library/stats.json`. It also writes sample books (300 base, 60 bonus, plus the 5 biggest wins) to `web/books/` for the demo.
+`library/stats.json`. It also writes sample books per mode plus `modes.json` to `web/books/` for the demo.
 
 Every number is in `math/config.py`. The values marked PLACEHOLDER were not in the
 design doc and were filled in so the model runs end to end.
@@ -45,15 +45,37 @@ design doc and were filled in so the model runs end to end.
    `MERGE_MULTIPLIER[size]` (x1, x2, x5, x10, x25), and the merged goblin gets +1 dig
    power. Merges can chain left to right across all five tunnels.
 5. **Pay.** Each goblin pays its haul × multiplier.
-6. **Mine Maps.** 3/4/5 maps give 8/10/12 free digs. Free digs use richer
-   tables and a persistent Mine Multiplier that grows +1 per merge. 3+ maps retrigger +5.
-   Bonus buy costs 100x and guarantees 3–5 maps. Max win 5000x.
+6. **Mystery Ore.** Purple "?" blocks glow through the dirt. Each spin picks one hidden
+   treasure, and every Mystery Ore dug that spin turns into it.
+7. **Mystery Spin.** 2% of paid spins: the mine rumbles and every tunnel without a
+   map gets a goblin.
+8. **Free Digs.** 3/4/5 Mine Maps give 8/10/12 free digs. Free digs use richer tables
+   and a Mine Multiplier that starts at x1, grows +1 per merge and lasts the whole bonus.
+   **Spins in spins:** 2 maps during free digs add +1, 3/4/5 add +3/+4/+5.
+9. **Super Free Digs.** Mine Multiplier starts at x8 and grows +3 per merge.
+10. **Hidden bonus: Golden Map.** Each map has a 2% chance to be golden. It isn't shown
+    as golden unless it matters. A trigger with a golden map starts Super Free Digs
+    instead of regular ones, including a regular bonus buy. 3+ maps with a golden one
+    during regular free digs upgrade the bonus to Super mid-round.
+11. Max win 10000x the bet in every mode.
+
+### Bet modes
+
+| Mode | Cost | What it does | Bonus chance |
+|---|---|---|---|
+| `base` | 1x | Normal spin | 1 in ~520 |
+| `ante` | 1.25x | Ante Dig: more Mine Maps land | 1 in ~235 |
+| `feature` | 17x | Feature Spins: 2 Mine Maps placed every spin | 1 in ~6 |
+| `bonus` | 100x | Buy Free Digs (3–5 maps; a golden map still upgrades it) | always |
+| `super` | 450x | Buy Super Free Digs | always |
+
+All five modes are fitted to 96.5% RTP. About 5–7% of bonuses become Super through the Golden Map.
 
 ### Book events
 
-`reveal` (board + surface), `dig`, `merge`, `mineMultiplier`, `spinWin`,
-`setTotalWin`, `freeSpinTrigger`, `updateFreeSpin`, `freeSpinRetrigger`,
-`freeSpinEnd`, `finalWin`. All amounts are hundredths of the bet.
+`reveal` (board, surface, `mysterySpin`), `dig`, `mysteryReveal`, `merge`,
+`mineMultiplier`, `spinWin`, `setTotalWin`, `freeSpinTrigger` (`super`),
+`updateFreeSpin`, `freeSpinRetrigger` (`added`), `superUpgrade`, `freeSpinEnd`, `finalWin`. All amounts are hundredths of the bet.
 
 ## Front end
 

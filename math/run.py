@@ -12,6 +12,7 @@ import math
 import os
 import random
 import sys
+from multiprocessing import Pool
 
 import zstandard
 
@@ -22,6 +23,15 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(ROOT, "..", "library", "publish_files")
 WEB_BOOKS = os.path.join(ROOT, "..", "web", "books")
 WEIGHT_SCALE = 1_000_000
+
+
+CHUNK = 5000
+
+
+def sim_chunk(job):
+    seed, mode, start, count = job
+    rng = random.Random(f"{seed}-{mode}-{start}")
+    return [play_round(rng, start + i + 1, mode) for i in range(count)]
 
 
 def fit_weights(payouts, cost, target):
@@ -38,7 +48,9 @@ def fit_weights(payouts, cost, target):
             den += w
         return num / den
 
-    lo, hi = -0.5, 0.5
+    # Bound |lam * x| <= 20 so weights stay well inside uint64.
+    bound = min(0.5, 20 / max(max(xs), 1e-9))
+    lo, hi = -bound, bound
     if not (rtp(hi) <= target <= rtp(lo)):
         sys.exit(f"Raw RTP too far from target to fit (range {rtp(hi):.3f}..{rtp(lo):.3f}). Retune config.")
     for _ in range(80):
@@ -73,21 +85,23 @@ def main():
     report = {}
     for mode, spec in C.BET_MODES.items():
         n = spec["sims"] // (10 if args.quick else 1)
-        rng = random.Random(f"{args.seed}-{mode}")
-        books = [play_round(rng, i + 1, mode) for i in range(n)]
+        chunks = [(args.seed, mode, start, min(CHUNK, n - start)) for start in range(0, n, CHUNK)]
+        with Pool() as pool:
+            books = [b for part in pool.map(sim_chunk, chunks) for b in part]
         payouts = [b["payoutMultiplier"] for b in books]
         raw_rtp = sum(payouts) / 100 / spec["cost"] / n
         weights, lam = fit_weights(payouts, spec["cost"], C.TARGET_RTP)
         s = stats(payouts, weights, spec["cost"])
         s.update({"sims": n, "raw_rtp": raw_rtp, "tilt_lambda": lam,
-                  "free_spin_rate": sum(1 for b in books if b["freeGameWins"] or b["criteria"] == "freegame") / n})
+                  "free_spin_rate": sum(1 for b in books if "freegame" in b["criteria"]) / n,
+                  "super_rate": sum(1 for b in books if b["criteria"] == "superfreegame") / n})
         report[mode] = s
         print(f"{mode:6s} sims={n:>7} raw_rtp={raw_rtp:.4f} rtp={s['rtp']:.4f} "
               f"hit={s['hit_rate']:.3f} max={s['max_win']:.0f}x sd={s['std_dev']:.2f} lam={lam:+.4f}")
 
         books_name = f"books_{mode}.jsonl.zst"
         weights_name = f"lookUpTable_{mode}_0.csv"
-        cctx = zstandard.ZstdCompressor(level=19)
+        cctx = zstandard.ZstdCompressor(level=12, threads=-1)
         payload = "\n".join(json.dumps(b, separators=(",", ":")) for b in books).encode()
         with open(os.path.join(OUT, books_name), "wb") as f:
             f.write(cctx.compress(payload))
@@ -99,11 +113,14 @@ def main():
 
         # Sample for the local web demo: weighted draw plus the biggest wins.
         srng = random.Random(1)
-        sample = srng.choices(books, weights=weights, k=300 if mode == "base" else 60)
+        sample = srng.choices(books, weights=weights, k=300 if spec["kind"] == "spin" and mode != "feature" else 60)
         sample += sorted(books, key=lambda b: -b["payoutMultiplier"])[:5]
         with open(os.path.join(WEB_BOOKS, f"{mode}.json"), "w") as f:
             json.dump(sample, f, separators=(",", ":"))
 
+    # Bet mode list for the front end (costs + labels); Stake's auth config may override.
+    with open(os.path.join(WEB_BOOKS, "modes.json"), "w") as f:
+        json.dump({m: {"cost": s["cost"], "kind": s["kind"]} for m, s in C.BET_MODES.items()}, f, indent=2)
     with open(os.path.join(OUT, "index.json"), "w") as f:
         json.dump(index, f, indent=2)
     with open(os.path.join(ROOT, "..", "library", "stats.json"), "w") as f:

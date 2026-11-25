@@ -51,27 +51,28 @@ export function eventsOf(round) {
 }
 
 class LocalClient {
-  constructor() { this.local = true; this.balance = 1000 * API_MULT; this.books = {}; this.pending = 0; }
+  constructor() { this.local = true; this.balance = 10000 * API_MULT; this.books = {}; this.pending = 0; this.modes = {}; }
   async load(mode) {
     if (!this.books[mode]) this.books[mode] = await (await fetch(`books/${mode}.json`)).json();
     return this.books[mode];
   }
   async authenticate() {
+    this.modes = await (await fetch('books/modes.json')).json();
     return {
       balance: { amount: this.balance, currency: 'DEMO' },
       config: { betLevels: [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100].map(x => x * API_MULT), defaultBetLevel: API_MULT,
-                betModes: { base: { cost: 1 }, bonus: { cost: 100 } } },
+                betModes: this.modes },
       round: null,
     };
   }
   async play(amount, mode) {
-    const cost = mode === 'bonus' ? 100 : 1;
+    const cost = this.modes[mode]?.cost ?? 1;
     if (amount * cost > this.balance) throw new Error('Not enough demo balance');
     this.balance -= amount * cost;
     const books = await this.load(mode);
     const book = books[Math.floor(Math.random() * books.length)];
     this.pending = Math.round(amount * book.payoutMultiplier / 100);
-    const round = { mode, amount, payoutMultiplier: book.payoutMultiplier / 100, state: book.events, active: this.pending > 0 };
+    const round = { mode, amount: amount * cost, payoutMultiplier: book.payoutMultiplier / 100, state: book.events, active: this.pending > 0 };
     return { balance: { amount: this.balance, currency: 'DEMO' }, round, events: book.events };
   }
   async endRound() {
