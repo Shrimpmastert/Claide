@@ -83,16 +83,56 @@ All five modes are fitted to 96.5% RTP. About 5–7% of bonuses become Super thr
 cd web && python3 -m http.server 8000   # open http://localhost:8000
 ```
 
-Without launch params it runs in demo mode on the sample books. Launched by Stake
-Engine (`?sessionID=…&rgs_url=…&lang=…&currency=…`) it uses the RGS wallet API
-(`/wallet/authenticate`, `/wallet/play`, `/wallet/end-round`) and plays back
-`round.state`.
+Static HTML/JS with no build step and only relative paths. Without launch params it
+runs in demo mode on the sample rounds in `web/books/`. Launched by Stake Engine
+(`?sessionID=…&rgs_url=…&lang=…&device=…`) it uses the RGS wallet API
+(`/wallet/authenticate`, `/wallet/play`, `/wallet/end-round`, `/bet/event`) and plays
+back `round.state`.
 
-## Before submitting to Stake
+What it handles:
+- **Bets:** bet levels from the RGS config, filtered to `minBet`/`maxBet`/`stepBet`.
+- **Currency:** formatting for ISO and crypto codes, and the social coins `XGC`/`XSC` (shown as GC/SC).
+- **Social casino:** when `jurisdiction.socialCasino` is set, no "bet" or "buy" wording.
+- **Jurisdiction:** turbo is hidden when `jurisdiction.disabledTurbo` is set.
+- **Errors:** player-facing messages for each RGS error code.
+- **Resume:** replays an active round after a reconnect.
+- **Buys:** confirmation dialog before buying a bonus.
+- **Screens:** rules/paytable built from `web/data/paytable.json`, including RTP per mode and max win; loading screen with progress.
+- **Sound:** mute toggle.
+- **Text:** all wording lives in `web/src/text.js`, ready for translations.
 
-- Check the file formats and RGS calls against the current Stake Engine docs.
-  They were written from memory of the `math-sdk` / `web-sdk` conventions.
-- Replace the placeholder values with the real design numbers and re-run.
-- Stake's own optimizer (in `math-sdk`) gives finer control over the win
-  distribution than the single-parameter tilt used here.
-- Add art, sound, a paytable/rules screen and localisation. The canvas drawings are placeholders.
+### Adding art
+
+See **`web/assets/README.md`** for every image and sound slot, with file names and
+sizes. Drop files into `web/assets/` and reload. Missing files fall back to the
+built-in placeholders, so you can add art one piece at a time.
+
+## Publishing
+
+```bash
+python math/run.py     # only if you changed math/config.py (~2 min)
+python build.py        # validates everything, writes dist/
+```
+
+`build.py` checks every book against its lookup table, the final win against the
+payout, the max win cap, uint64 weights and RTP per mode. It lists any art slots still
+on placeholders and fails on errors. Then:
+
+1. Stake Engine dashboard → your game → **Files**: upload the contents of
+   `dist/math/` (5 books files, 5 lookup tables, `index.json`), then
+   **Publish → Math**.
+2. Upload the contents of `dist/frontend/` (`index.html` at the root), then
+   **Publish → Front End**.
+3. Developer page → **Start game session → Launch in New Tab** to test on the real RGS.
+
+### Still to check before submitting
+
+- **Stake's approval checklist:** I couldn't reach Stake's documentation site from the
+  build environment. The file formats and RGS calls match the public engineio
+  `math-sdk`/`web-sdk` docs, but read Stake's current approval checklist for any
+  rules on mode count, ante/feature/bonus buys per jurisdiction, and required rules wording.
+- **Resume:** it reads the saved position from `round.event` (sent with
+  `/bet/event` each free dig). Confirm that field name on a real disconnect.
+- **Mode name case:** mode names are sent lowercase, matching `index.json`. The RGS docs
+  example shows `"BASE"`, so check that a play goes through on the real RGS.
+- **Placeholder numbers:** the values marked PLACEHOLDER in `math/config.py` are the design numbers I filled in.

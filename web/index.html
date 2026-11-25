@@ -4,34 +4,59 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Goblin Tunnels</title>
+<link rel="icon" href="assets/ui/favicon.png">
 <link rel="stylesheet" href="src/style.css">
 </head>
 <body>
+<div id="loader">
+  <img src="assets/ui/logo.png" alt="Goblin Tunnels" class="logo" onerror="this.replaceWith(Object.assign(document.createElement('h1'),{textContent:'Goblin Tunnels'}))">
+  <div class="bar"><div id="loadBar"></div></div>
+  <p class="tap" hidden data-t="tapToStart">Tap to start</p>
+</div>
+
 <main id="app">
   <header class="hud">
-    <div class="stat"><span class="label">Balance</span><span id="balance">–</span></div>
-    <div class="stat center"><span class="label" id="modeLabel">Win</span><span id="win">0.00</span></div>
-    <div class="stat right"><span class="label">Bet</span><span id="bet">–</span></div>
+    <div class="stat"><span class="label" data-t="balance">Balance</span><span id="balance">–</span></div>
+    <div class="stat center"><span class="label" data-t="win">Win</span><span id="win">–</span></div>
+    <div class="stat right"><span class="label" data-t="bet">Bet</span><span id="bet">–</span></div>
   </header>
-  <div id="stage"><canvas id="board"></canvas><div id="banner" hidden></div></div>
+  <div id="stage"><canvas id="board" aria-label="Mine board"></canvas><div id="banner" hidden aria-live="polite"></div></div>
   <footer class="controls">
     <div class="row">
-      <button id="betDown" aria-label="Lower bet">−</button>
-      <button id="spin" class="primary">DIG<small id="spinCost"></small></button>
-      <button id="betUp" aria-label="Raise bet">+</button>
+      <button id="betDown" aria-label="Lower">−</button>
+      <button id="spin" class="primary"><span data-t="dig">DIG</span><small id="spinCost"></small></button>
+      <button id="betUp" aria-label="Raise">+</button>
     </div>
     <div class="row">
-      <button id="ante" class="toggle" aria-pressed="false">Ante Dig<small>more Mine Maps · 1.25x</small></button>
-      <button id="feature" class="toggle" aria-pressed="false">Feature Spins<small>2 maps every spin · <span id="featureCost"></span></small></button>
+      <button id="ante" class="toggle" aria-pressed="false"><span data-t="ante">Ante Dig</span><small id="anteSub"></small></button>
+      <button id="feature" class="toggle" aria-pressed="false"><span data-t="feature">Feature Spins</span><small id="featureSub"></small></button>
     </div>
     <div class="row">
-      <button id="buy" class="secondary">Buy Free Digs<small id="buyCost"></small></button>
-      <button id="buySuper" class="super">Buy Super Bonus<small id="superCost"></small></button>
+      <button id="buy" class="secondary"><span data-t="buyBonus">Buy Free Digs</span><small id="buyCost"></small></button>
+      <button id="buySuper" class="super"><span data-t="buySuper">Buy Super Bonus</span><small id="superCost"></small></button>
     </div>
-    <label class="turbo"><input type="checkbox" id="turbo"> Turbo</label>
+    <div class="row small">
+      <label class="turbo" id="turboWrap"><input type="checkbox" id="turbo"> <span data-t="turbo">Turbo</span></label>
+      <button id="sound" class="link" aria-pressed="true" data-t="sound">Sound</button>
+      <button id="rulesBtn" class="link" data-t="rules">Rules</button>
+    </div>
   </footer>
   <p id="status" role="status"></p>
 </main>
+
+<dialog id="rules">
+  <form method="dialog"><button class="close" data-t="close">Close</button></form>
+  <div id="rulesBody"></div>
+</dialog>
+
+<dialog id="confirm">
+  <p id="confirmText"></p>
+  <form method="dialog" class="row">
+    <button value="cancel" data-t="cancel">Cancel</button>
+    <button value="ok" class="primary" data-t="confirm">Confirm</button>
+  </form>
+</dialog>
+
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

@@ -18,6 +18,7 @@ import zstandard
 
 import config as C
 from game import play_round
+import paytable
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(ROOT, "..", "library", "publish_files")
@@ -118,13 +119,11 @@ def main():
         with open(os.path.join(WEB_BOOKS, f"{mode}.json"), "w") as f:
             json.dump(sample, f, separators=(",", ":"))
 
-    # Bet mode list for the front end (costs + labels); Stake's auth config may override.
-    with open(os.path.join(WEB_BOOKS, "modes.json"), "w") as f:
-        json.dump({m: {"cost": s["cost"], "kind": s["kind"]} for m, s in C.BET_MODES.items()}, f, indent=2)
     with open(os.path.join(OUT, "index.json"), "w") as f:
         json.dump(index, f, indent=2)
     with open(os.path.join(ROOT, "..", "library", "stats.json"), "w") as f:
         json.dump(report, f, indent=2)
+    paytable.write()
 
 
 if __name__ == "__main__":

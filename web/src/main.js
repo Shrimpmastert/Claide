@@ -1,17 +1,19 @@
 // Goblin Tunnels front end: draws the mine and plays back book events.
-import { createClient, eventsOf, API_MULT } from './rgs.js';
+import { createClient, eventsOf, API_MULT, launch } from './rgs.js';
+import { t, setLanguage, setCurrency, formatMoney } from './text.js';
+import { loadAll, drawImg, fillImg, img, IMAGES, play as sfx, playMusic, setMuted, isMuted } from './assets.js';
 
 const TUNNELS = 5, LAYERS = 6;
 const W = 600, H = 760, TOP = 110, ROW = 100, COLW = W / TUNNELS;
 const ZONES = [
-  { from: 1, to: 2, name: 'TOPSOIL', color: '#5b3a22' },
-  { from: 3, to: 4, name: 'STONE', color: '#4a4440' },
-  { from: 5, to: 6, name: 'DEEP VEIN', color: '#2d2438' },
+  { from: 1, to: 2, name: 'TOPSOIL', color: '#5b3a22', img: 'zone_topsoil' },
+  { from: 3, to: 4, name: 'STONE', color: '#4a4440', img: 'zone_stone' },
+  { from: 5, to: 6, name: 'DEEP VEIN', color: '#2d2438', img: 'zone_deep' },
 ];
 
 const $ = id => document.getElementById(id);
 const canvas = $('board');
-const ctx = canvas.getContext('2d');
+let ctx = canvas.getContext('2d');
 
 const state = {
   board: null,            // [tunnel][layer-1] symbol
@@ -33,6 +35,7 @@ function resize() {
 function cellCenter(t, layer) { return [t * COLW + COLW / 2, TOP + (layer - 0.5) * ROW]; }
 
 function drawSymbol(sym, x, y, s = 1) {
+  if (drawImg(ctx, sym, x, y, 76 * s, 76 * s)) return;
   ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
   switch (sym) {
     case 'coin':
@@ -73,6 +76,12 @@ const label = (txt, x, y, c, size = 16, weight = 800) => {
 function drawGoblin(g) {
   const r = 22 + (g.size - 1) * 5;
   ctx.save(); ctx.globalAlpha = g.alpha ?? 1; ctx.translate(g.x, g.y);
+  const art = g.size > 1 && drawImg(ctx, `goblin_${g.size}`, 0, 0, 2.6 * r, 2.6 * r) || drawImg(ctx, 'goblin', 0, 0, 2.6 * r, 2.6 * r);
+  if (art) {
+    if (g.power != null) { circle(0, -r - 4, 12, '#e6a21c'); label(String(g.power), 0, -r - 4, '#3a2400', 14); }
+    if (g.size > 1) { circle(r - 2, r - 2, 13, '#e0334a'); label(`x${g.mult}`, r - 2, r - 2, '#fff', 12); }
+    ctx.restore(); return;
+  }
   circle(0, 4, r, '#5fbf4a');                               // head
   poly([[-r, -2], [-r - 12, -10], [-r + 4, 8]], '#4ea33b');  // ears
   poly([[r, -2], [r + 12, -10], [r - 4, 8]], '#4ea33b');
@@ -87,13 +96,16 @@ function drawGoblin(g) {
 function draw() {
   ctx.clearRect(0, 0, W, H);
   // sky / surface
-  const sky = ctx.createLinearGradient(0, 0, 0, TOP);
-  sky.addColorStop(0, state.super ? '#6b4a00' : state.freeSpins ? '#3b1f5c' : '#2a3a52'); sky.addColorStop(1, '#6b4a2a');
-  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, TOP);
-  rect(0, TOP - 8, W, 8, '#3f7a2c');
+  if (!fillImg(ctx, state.super ? 'sky_super' : state.freeSpins ? 'sky_free' : 'sky_base', 0, 0, W, TOP)) {
+    const sky = ctx.createLinearGradient(0, 0, 0, TOP);
+    sky.addColorStop(0, state.super ? '#6b4a00' : state.freeSpins ? '#3b1f5c' : '#2a3a52'); sky.addColorStop(1, '#6b4a2a');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, TOP);
+    rect(0, TOP - 8, W, 8, '#3f7a2c');
+  }
   // zones
   for (const z of ZONES) {
-    rect(0, TOP + (z.from - 1) * ROW, W, (z.to - z.from + 1) * ROW, z.color);
+    if (!fillImg(ctx, z.img, 0, TOP + (z.from - 1) * ROW, W, (z.to - z.from + 1) * ROW))
+      rect(0, TOP + (z.from - 1) * ROW, W, (z.to - z.from + 1) * ROW, z.color);
     ctx.save(); ctx.globalAlpha = 0.35; label(z.name, W - 44, TOP + (z.from - 1) * ROW + 12, '#fff', 10, 700); ctx.restore();
   }
   // tunnels & cells
@@ -104,11 +116,11 @@ function draw() {
       const [cx, cy] = cellCenter(t, l);
       const open = state.dug[t] >= l;
       if (open) {
-        ctx.fillStyle = 'rgba(0,0,0,.45)'; roundRect(x + 8, cy - ROW / 2 + 8, COLW - 16, ROW - 16, 12);
+        if (!fillImg(ctx, 'cell_open', x + 8, cy - ROW / 2 + 8, COLW - 16, ROW - 16)) { ctx.fillStyle = 'rgba(0,0,0,.45)'; roundRect(x + 8, cy - ROW / 2 + 8, COLW - 16, ROW - 16, 12); }
         const sym = state.board?.[t][l - 1];
         if (sym && !state.collected?.has(`${t}:${l}`)) drawSymbol(sym === 'mystery' && state.mystery ? state.mystery : sym, cx, cy);
       } else {
-        ctx.fillStyle = 'rgba(255,255,255,.04)'; roundRect(x + 8, cy - ROW / 2 + 8, COLW - 16, ROW - 16, 12);
+        if (!fillImg(ctx, 'cell_covered', x + 8, cy - ROW / 2 + 8, COLW - 16, ROW - 16)) { ctx.fillStyle = 'rgba(255,255,255,.04)'; roundRect(x + 8, cy - ROW / 2 + 8, COLW - 16, ROW - 16, 12); }
         if (state.board?.[t][l - 1] === 'mystery') { ctx.save(); ctx.globalAlpha = .55; drawSymbol('mystery', cx, cy, .8); ctx.restore(); }
       }
     }
@@ -117,6 +129,7 @@ function draw() {
     if (s.kind === 'map' && !state.goblins.some(g => g.tunnel === t && g.y > TOP)) {
       const [mx] = cellCenter(t, 0);
       const gold = s.golden && state.goldShown;
+      if (drawImg(ctx, gold ? 'map_golden' : 'map', mx, TOP - 46, 64, 52)) continue;
       if (gold) { ctx.save(); ctx.shadowColor = '#ffd766'; ctx.shadowBlur = 24; rect(mx - 26, TOP - 62, 52, 40, '#ffd766'); ctx.restore(); }
       rect(mx - 26, TOP - 62, 52, 40, gold ? '#f2c94c' : '#e9d5a1'); ctx.strokeStyle = gold ? '#fff7c2' : '#8a5a2b'; ctx.lineWidth = 2; ctx.strokeRect(mx - 26, TOP - 62, 52, 40);
       label('✕', mx + 8, TOP - 44, '#c0392b', 18); ctx.setLineDash([3, 3]); line(mx - 18, TOP - 30, mx + 4, TOP - 44); ctx.setLineDash([]);
@@ -127,8 +140,9 @@ function draw() {
   for (const p of state.popups) { ctx.save(); ctx.globalAlpha = p.a; label(p.text, p.x, p.y, p.color || '#ffd766', p.size || 18); ctx.restore(); }
   // free spin HUD
   if (state.freeSpins) {
-    label(`${state.super ? 'SUPER ' : ''}FREE DIG ${state.freeSpins.i}/${state.freeSpins.n}`, state.super ? 115 : 90, 20, state.super ? '#ffd766' : '#e7c9ff', 15);
-    label(`MINE x${state.mineMult}`, W - 70, 20, '#ffd766', 16);
+    const hud = t(state.super ? 'hudSuper' : 'hudFree', state.freeSpins);
+    label(hud, 16 + hud.length * 4.3, 20, state.super ? '#ffd766' : '#e7c9ff', 15);
+    label(t('hudMine', { mult: state.mineMult }), W - 70, 20, '#ffd766', 16);
   }
 }
 function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); ctx.fill(); }
@@ -155,40 +169,45 @@ function popup(text, x, y, color, size) {
 }
 
 // ---------- event playback ----------
-let bet = 1;          // display units
-const money = cents => (cents / 100 * bet).toFixed(2);   // book amounts are x100 of the bet
+let bet = 1;                                        // base bet in display units
+const money = cents => formatMoney(cents / 100 * bet);   // book amounts are x100 of the bet
 let roundWin = 0;
+let roundIndex = 0;                                 // index of the event being played
 
-async function play(events) {
+async function play(events, startAt = 0) {
   roundWin = 0; setWin(0); state.mineMult = 1; state.freeSpins = null; state.super = false; banner();
+  // On resume, fast-forward everything before the saved point.
+  const saved = speed;
   for (const e of events) {
+    roundIndex = e.index ?? 0;
+    speed = roundIndex < startAt ? 50 : saved;
     const fn = handlers[e.type];
     if (fn) await fn(e);
   }
+  speed = saved;
   state.freeSpins = null; state.super = false;
+  playMusic('music_base');
 }
 
-const goblinAt = t => state.goblins.find(g => g.tunnel === t);
+const goblinAt = tn => state.goblins.find(g => g.tunnel === tn);
 
 const handlers = {
   async reveal(e) {
     state.board = e.board; state.surface = e.surface; state.dug = Array(TUNNELS).fill(0);
     state.collected = new Set(); state.goblins = []; state.mystery = null; state.goldShown = false;
-    if (e.mysterySpin) await banner('MYSTERY SPIN! A goblin in every tunnel', 1300);
-    // drop goblins from the sky onto the surface
+    if (e.mysterySpin) { sfx('mystery'); await banner(t('mysterySpin'), 1300); }
     const drops = [];
-    e.surface.forEach((s, t) => {
+    e.surface.forEach((s, tn) => {
       if (s.kind !== 'goblin') return;
-      const [x] = cellCenter(t, 0);
-      const g = { tunnel: t, x, y: -40, size: 1, mult: 1, power: s.power, haul: 0 };
+      const [x] = cellCenter(tn, 0);
+      const g = { tunnel: tn, x, y: -40, size: 1, mult: 1, power: s.power, haul: 0 };
       state.goblins.push(g);
-      drops.push(wait(t * 90).then(() => tween(g, { y: TOP - 34 }, 380)));
+      drops.push(wait(tn * 90).then(() => { sfx('drop', 0.6); return tween(g, { y: TOP - 34 }, 380); }));
     });
     await Promise.all(drops);
     const maps = e.surface.filter(s => s.kind === 'map').length;
-    // Hidden bonus: golden maps only show themselves when they matter.
     if (maps >= 3 && e.surface.some(s => s.golden)) state.goldShown = true;
-    if (maps) setStatus(`${maps} Mine Map${maps > 1 ? 's' : ''}${maps >= 3 ? '!' : ''}`);
+    if (maps) { sfx('map'); setStatus(t('maps', { n: maps })); }
     await wait(250);
   },
   async dig(e) {
@@ -197,41 +216,45 @@ const handlers = {
     for (let l = e.from + 1; l <= e.to; l++) {
       state.dug[e.tunnel] = l;
       const [, cy] = cellCenter(e.tunnel, l);
-      g.power = Math.max(0, (g.power ?? 0) - (state.board[e.tunnel][l - 1] === 'boulder' ? 2 : 1));
+      const isBoulder = state.board[e.tunnel][l - 1] === 'boulder';
+      g.power = Math.max(0, (g.power ?? 0) - (isBoulder ? 2 : 1));
+      sfx(isBoulder ? 'boulder' : 'dig', 0.5);
       await tween(g, { y: cy }, 260);
       if (values.has(l)) {
         state.collected.add(`${e.tunnel}:${l}`);
         g.haul += values.get(l);
+        sfx('collect', 0.7);
         popup(`+${money(values.get(l))}`, g.x, cy - 30);
         await wait(140);
       }
     }
-    if (e.blockedBy) popup('BOULDER!', g.x, cellCenter(e.tunnel, e.blockedBy)[1], '#cfcfcf', 14);
+    if (e.blockedBy) popup(t('boulder'), g.x, cellCenter(e.tunnel, e.blockedBy)[1], '#cfcfcf', 14);
     g.power = null;
     await wait(120);
   },
+  async mysteryReveal(e) {
+    state.mystery = e.symbol; sfx('mystery');
+    await banner(t('mysteryOre', { symbol: e.symbol.toUpperCase() }), 900);
+  },
   async merge(e) {
     const a = goblinAt(e.from), b = goblinAt(e.into); if (!a || !b) return;
-    // break through the wall between the two tunnels
+    sfx('merge');
     await tween(a, { x: b.x, alpha: 0.3 }, 320);
     state.goblins.splice(state.goblins.indexOf(a), 1);
     b.size = e.size; b.mult = e.multiplier; b.haul = e.haul; b.power = e.bonusPower;
-    popup(`MERGE x${e.multiplier}`, b.x, b.y - 40, '#ff7a8a', 20);
+    popup(t('merge', { mult: e.multiplier }), b.x, b.y - 40, '#ff7a8a', 20);
     await wait(380);
   },
-  async mysteryReveal(e) {
-    state.mystery = e.symbol;
-    await banner(`MYSTERY ORE → ${e.symbol.toUpperCase()}`, 900);
-  },
+  async mineMultiplier(e) { state.mineMult = e.value; popup(t('hudMine', { mult: e.value }), W - 70, 40, '#ffd766', 18); await wait(200); },
   async superUpgrade(e) {
-    state.super = true; state.mineMult = e.mineMultiplier;
-    await banner(`GOLDEN MAP! UPGRADED TO SUPER · MINE x${e.mineMultiplier}`, 1800);
+    state.super = true; state.mineMult = e.mineMultiplier; sfx('super');
+    await banner(t('goldenUpgrade', { mult: e.mineMultiplier }), 1800);
   },
-  async mineMultiplier(e) { state.mineMult = e.value; popup(`MINE x${e.value}`, W - 70, 40, '#ffd766', 18); await wait(200); },
   async spinWin(e) {
+    sfx('win', 0.8);
     for (const r of e.goblins) {
       const g = goblinAt(r.tunnel);
-      if (g) popup(`${money(r.win)}`, g.x, g.y + 34, '#7dff6a', 20);
+      if (g) popup(money(r.win), g.x, g.y + 34, '#7dff6a', 20);
     }
     if (e.mineMultiplier > 1) popup(`x${e.mineMultiplier}`, W / 2, H / 2, '#ffd766', 32);
     await wait(650);
@@ -239,17 +262,22 @@ const handlers = {
   async setTotalWin(e) { roundWin = e.amount; setWin(roundWin); },
   async freeSpinTrigger(e) {
     state.freeSpins = { i: 0, n: e.totalFs }; state.super = !!e.super; state.mineMult = e.mineMultiplier ?? 1;
-    if (e.super && state.goldShown) await banner('GOLDEN MAP FOUND!', 1200);
-    await banner(e.super ? `${e.totalFs} SUPER FREE DIGS! MINE x${state.mineMult}` : `${e.totalFs} FREE DIGS!`, 1600);
+    sfx(e.super ? 'super' : 'trigger');
+    if (e.super && state.goldShown) await banner(t('goldenFound'), 1200);
+    await banner(e.super ? t('superDigs', { n: e.totalFs, mult: state.mineMult }) : t('freeDigs', { n: e.totalFs }), 1600);
+    playMusic('music_free');
   },
-  async freeSpinRetrigger(e) { state.freeSpins.n = e.totalFs; await banner(`+${e.added ?? ''} FREE DIG${e.added === 1 ? '' : 'S'}`, 1000); },
-  async updateFreeSpin(e) { state.freeSpins = { i: e.amount, n: e.total }; },
-  async freeSpinEnd(e) { await banner(`${e.super ? 'SUPER ' : ''}FREE DIGS WON ${money(e.amount)}`, 1600); },
+  async freeSpinRetrigger(e) {
+    state.freeSpins.n = e.totalFs; sfx('trigger', 0.6);
+    await banner(e.added === 1 ? t('moreDig') : t('moreDigs', { n: e.added }), 1000);
+  },
+  async updateFreeSpin(e) { state.freeSpins = { i: e.amount, n: e.total }; client.event(e.index); },
+  async freeSpinEnd(e) { await banner(t(e.super ? 'superDigsWon' : 'freeDigsWon', { amount: money(e.amount) }), 1600); },
   async finalWin(e) {
     roundWin = e.amount; setWin(roundWin);
     const x = e.amount / 100;
-    if (e.capped) await banner(`MAX WIN! ${money(e.amount)}`, 2200);
-    else if (x >= 20) await banner(`${x >= 100 ? 'MEGA' : 'BIG'} WIN ${money(e.amount)}`, 1800);
+    if (e.capped) { sfx('bigwin'); await banner(t('maxWin', { amount: money(e.amount) }), 2200); }
+    else if (x >= 20) { sfx('bigwin'); await banner(t(x >= 100 ? 'megaWin' : 'bigWin', { amount: money(e.amount) }), 1800); }
   },
 };
 
@@ -262,22 +290,24 @@ async function banner(text, ms) {
 
 // ---------- UI / round flow ----------
 const client = createClient();
-let betLevels = [API_MULT], betIndex = 0, busy = false, balance = 0;
+let betLevels = [API_MULT], betIndex = 0, busy = false;
 let modes = { base: { cost: 1 }, ante: { cost: 1.25 }, feature: { cost: 17 }, bonus: { cost: 100 }, super: { cost: 450 } };
+let paytable = null;
 let spinMode = 'base';   // base | ante | feature
 
-const fmt = micro => (micro / API_MULT).toFixed(2);
+const micro = v => formatMoney(v / API_MULT);
 function setWin(cents) { $('win').textContent = money(cents); }
-function setStatus(t) { $('status').textContent = t || ''; }
-function setBalance(b) { balance = b.amount; $('balance').textContent = `${fmt(b.amount)} ${b.currency || ''}`; }
+function setStatus(s) { $('status').textContent = s || ''; }
+function setBalance(b) { $('balance').textContent = micro(b.amount); }
 function setBet() {
   bet = betLevels[betIndex] / API_MULT;
-  $('bet').textContent = bet.toFixed(2);
-  const c = m => (bet * (modes[m]?.cost ?? 1)).toFixed(2);
+  const c = m => formatMoney(bet * (modes[m]?.cost ?? 1));
+  $('bet').textContent = formatMoney(bet);
   $('spinCost').textContent = c(spinMode);
   $('buyCost').textContent = c('bonus');
   $('superCost').textContent = c('super');
-  $('featureCost').textContent = `${modes.feature?.cost ?? 17}x`;
+  $('anteSub').textContent = t('anteSub', { cost: modes.ante?.cost });
+  $('featureSub').textContent = t('featureSub', { cost: modes.feature?.cost });
 }
 function setSpinMode(m) {
   spinMode = spinMode === m ? 'base' : m;
@@ -286,6 +316,7 @@ function setSpinMode(m) {
   setBet();
 }
 function lock(on) { busy = on; for (const id of ['spin', 'buy', 'buySuper', 'ante', 'feature', 'betUp', 'betDown']) $(id).disabled = on; }
+function showError(err) { setStatus(t(`errors.${err.code}`) !== `errors.${err.code}` ? t(`errors.${err.code}`) : t('errors.ERR_GEN')); }
 
 async function round(mode) {
   if (busy) return;
@@ -294,35 +325,123 @@ async function round(mode) {
     const res = await client.play(betLevels[betIndex], mode);
     setBalance(res.balance);
     await play(res.events);
-    // Stake: rounds with a payout stay active until end-round credits them.
+    // Rounds with a payout stay active until end-round credits them.
     if (res.round?.active) setBalance((await client.endRound()).balance);
   } catch (err) {
-    setStatus(err.message);
+    showError(err);
   } finally { lock(false); }
 }
 
+function confirmBuy(mode) {
+  if (busy) return;
+  const name = t(mode === 'super' ? 'buySuper' : 'buyBonus');
+  $('confirmText').textContent = t('confirmBuy', { name, amount: formatMoney(bet * modes[mode].cost) });
+  const dlg = $('confirm');
+  dlg.returnValue = '';
+  dlg.onclose = () => { if (dlg.returnValue === 'ok') round(mode); };
+  dlg.showModal();
+}
+
+function buildRules() {
+  if (!paytable) return;
+  const p = paytable, pct = r => `${(r * 100).toFixed(2)}%`;
+  const row = (a, b) => `<tr><td>${a}</td><td>${b}</td></tr>`;
+  const modeName = { base: t('dig'), ante: t('ante'), feature: t('feature'), bonus: t('buyBonus'), super: t('buySuper') };
+  $('rulesBody').innerHTML = `
+    <h3>How it plays</h3>
+    <p>Goblins drop onto the surface of up to ${p.tunnels} tunnels. Each wears a helmet showing its dig power (1–6).
+    Goblins dig left to right, one layer per power point, collecting every treasure they pass. A boulder costs ${p.boulderCost} power;
+    a goblin that can't break it stops.</p>
+    <h3>Treasure values (x ${t('stake')})</h3>
+    <table>${Object.entries(p.treasures).map(([k, v]) => row(`<canvas class="sym" data-sym="${k}" width="64" height="64"></canvas> ${k}`, `${v}x`)).join('')}</table>
+    <h3>Merging</h3>
+    <p>When a goblin stops at the same depth as the goblin in the tunnel to its left, they merge: their hauls pool,
+    the goblin grows and digs ${p.mergeBonusPower} more layer. Each goblin pays its haul × its size multiplier.</p>
+    <table>${Object.entries(p.mergeMultiplier).map(([k, v]) => row(`${k} goblin${k > 1 ? 's' : ''}`, `x${v}`)).join('')}</table>
+    <h3>Mystery Ore</h3><p>Every Mystery Ore dug in a spin turns into the same randomly chosen treasure.</p>
+    <h3>Mystery Spin</h3><p>At random the mine rumbles and every tunnel without a Mine Map gets a goblin.</p>
+    <h3>Free Digs</h3>
+    <p>${Object.entries(p.freeSpins).map(([k, v]) => `${k} Mine Maps award ${v} free digs`).join(', ')}.
+    During free digs a Mine Multiplier starts at x${p.freeMult.start} and grows by ${p.freeMult.perMerge} with every merge.
+    It multiplies every free dig win. Mine Maps during free digs award more:
+    ${Object.entries(p.retrigger).map(([k, v]) => `${k} maps +${v}`).join(', ')}.</p>
+    <h3>Super Free Digs</h3>
+    <p>The Mine Multiplier starts at x${p.superMult.start} and grows by ${p.superMult.perMerge} with every merge.
+    A Golden Mine Map can turn any free digs into Super Free Digs, at the trigger or during the feature.</p>
+    <h3>Modes</h3>
+    <table>${Object.entries(p.modes).map(([k, v]) => row(modeName[k] || k, `${v.cost}x · RTP ${pct(v.rtp)}`)).join('')}</table>
+    <h3>General</h3>
+    <p>Maximum win is ${p.maxWin.toLocaleString()}x the ${t('stake')}; a round ends when it is reached.
+    Wins are shown in the player's currency. Malfunction voids all pays and plays.</p>`;
+  for (const c of document.querySelectorAll('canvas.sym')) {
+    ctxSwap(c.getContext('2d'), () => drawSymbol(c.dataset.sym, 32, 32, 0.75));
+  }
+}
+// Draw into another canvas using the same drawing helpers.
+function ctxSwap(other, fn) { const prev = ctx; ctx = other; try { fn(); } finally { ctx = prev; } }
+
 async function init() {
-  resize(); state.dug = Array(TUNNELS).fill(0); loop();
+  resize(); state.dug = Array(TUNNELS).fill(0);
+  const bar = $('loadBar');
+  await loadAll(p => { bar.style.width = `${Math.round(p * 100)}%`; });
+  if (img.page_bg) document.body.style.setProperty('--page-bg', `url(assets/${IMAGES.page_bg})`);
+  loop();
+
   $('turbo').onchange = e => { speed = e.target.checked ? 3 : 1; };
+  $('sound').onclick = () => { setMuted(!isMuted()); $('sound').setAttribute('aria-pressed', !isMuted()); };
   $('spin').onclick = () => round(spinMode);
-  $('buy').onclick = () => round('bonus');
-  $('buySuper').onclick = () => round('super');
+  $('buy').onclick = () => confirmBuy('bonus');
+  $('buySuper').onclick = () => confirmBuy('super');
   $('ante').onclick = () => setSpinMode('ante');
   $('feature').onclick = () => setSpinMode('feature');
   $('betUp').onclick = () => { betIndex = Math.min(betLevels.length - 1, betIndex + 1); setBet(); };
   $('betDown').onclick = () => { betIndex = Math.max(0, betIndex - 1); setBet(); };
-  window.addEventListener('keydown', e => { if (e.code === 'Space' && !busy) { e.preventDefault(); round(spinMode); } });
+  $('rulesBtn').onclick = () => $('rules').showModal();
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !busy && !document.querySelector('dialog[open]')) { e.preventDefault(); round(spinMode); }
+  });
+
   try {
-    try { modes = { ...modes, ...(await (await fetch('books/modes.json')).json()) }; } catch {}
+    try { paytable = await (await fetch('data/paytable.json')).json(); modes = { ...modes, ...paytable.modes }; } catch {}
     const auth = await client.authenticate();
-    for (const [m, v] of Object.entries(auth.config?.betModes || {})) if (v?.cost) modes[m] = { ...modes[m], cost: v.cost };
-    setBalance(auth.balance);
-    betLevels = auth.config?.betLevels?.length ? auth.config.betLevels : [API_MULT];
-    betIndex = Math.max(0, betLevels.indexOf(auth.config?.defaultBetLevel ?? API_MULT));
-    setBet();
-    if (client.local) setStatus('Demo mode: replaying sample books. Launch from Stake Engine for real play.');
+    const cfg = auth.config || {}, jur = cfg.jurisdiction || {};
+    const currency = auth.balance?.currency;
+    const social = !!jur.socialCasino || currency === 'XGC' || currency === 'XSC';
+    setLanguage(launch.lang, social); setCurrency(currency, launch.lang);
+    applyText();
+    if (jur.disabledTurbo) $('turboWrap').hidden = true;
+    for (const [m, v] of Object.entries(cfg.betModes || {})) if (v?.cost) modes[m] = { ...modes[m], cost: v.cost };
+
+    betLevels = (cfg.betLevels?.length ? cfg.betLevels : [cfg.minBet || API_MULT])
+      .filter(b => (!cfg.minBet || b >= cfg.minBet) && (!cfg.maxBet || b <= cfg.maxBet) && (!cfg.stepBet || b % cfg.stepBet === 0));
+    if (!betLevels.length) betLevels = [cfg.minBet || API_MULT];
+    betIndex = Math.max(0, betLevels.indexOf(cfg.defaultBetLevel ?? betLevels[0]));
+    setBet(); setBalance(auth.balance); setWin(0); buildRules();
+    if (client.local) setStatus(t('demo'));
+
+    $('loader').classList.add('done');
+    await new Promise(r => { $('loader').onclick = r; $('loader').querySelector('.tap').hidden = false; });
+    $('loader').hidden = true;
+    playMusic('music_base');
+
     // Resume an unfinished round after a disconnect.
-    if (auth.round?.active) { lock(true); await play(eventsOf(auth.round)); setBalance((await client.endRound()).balance); lock(false); }
-  } catch (err) { setStatus(`Could not connect: ${err.message}`); lock(true); }
+    if (auth.round?.active) {
+      lock(true);
+      const ev = eventsOf(auth.round);
+      const saved = Number(auth.round.event ?? auth.round.lastEvent ?? 0) || 0;
+      if (auth.round.amount) bet = auth.round.amount / (modes[(auth.round.mode || 'base').toLowerCase()]?.cost ?? 1) / API_MULT;
+      await play(ev, saved);
+      setBalance((await client.endRound()).balance);
+      setBet(); lock(false);
+    }
+  } catch (err) {
+    showError(err); lock(true);
+    $('loader').hidden = true;
+  }
 }
+
+function applyText() {
+  for (const el of document.querySelectorAll('[data-t]')) el.textContent = t(el.dataset.t);
+}
+
 init();
