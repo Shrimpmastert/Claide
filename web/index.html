@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Goblin Tunnels</title>
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+<main id="app">
+  <header class="hud">
+    <div class="stat"><span class="label">Balance</span><span id="balance">–</span></div>
+    <div class="stat center"><span class="label" id="modeLabel">Win</span><span id="win">0.00</span></div>
+    <div class="stat right"><span class="label">Bet</span><span id="bet">–</span></div>
+  </header>
+  <div id="stage"><canvas id="board"></canvas><div id="banner" hidden></div></div>
+  <footer class="controls">
+    <button id="betDown" aria-label="Lower bet">−</button>
+    <button id="spin" class="primary">DIG</button>
+    <button id="betUp" aria-label="Raise bet">+</button>
+    <button id="buy" class="secondary">Buy bonus<small id="buyCost"></small></button>
+    <label class="turbo"><input type="checkbox" id="turbo"> Turbo</label>
+  </footer>
+  <p id="status" role="status"></p>
+</main>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

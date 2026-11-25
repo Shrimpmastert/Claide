@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+# Full Stake math output is large; regenerate with `python math/run.py`.
+library/publish_files/
